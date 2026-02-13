@@ -58,3 +58,8 @@ class Voxel:
         for spring, base in zip(self.springs, self.base_lengths):
             new_length = base + amplitude * math.sin(frequency * t)
             spring.rest_length = max(5, new_length)
+
+    def apply_scale(self, scale):
+        for spring, base in zip(self.springs, self.base_lengths):
+            spring.rest_length = max(5, base * scale)
+
