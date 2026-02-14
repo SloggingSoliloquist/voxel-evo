@@ -5,9 +5,13 @@ import pymunk.pygame_util
 from config import *
 from world import create_space, create_ground
 from grid import build_grid
-from controller import WaveController
+from random_controller import RandomController
+controller = RandomController(ROWS, COLS, amplitude=0.2)
 
-controller = WaveController(ROWS, COLS, amplitude=0.2, frequency=3, phase_offset=0.6)
+#controller = CPGController(ROWS, COLS, omega=2.0, K=1.0, amplitude=0.2)
+
+#controller = WaveController(ROWS, COLS, amplitude=0.2, frequency=3, phase_offset=0.6)
+
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -31,10 +35,13 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
+    controller.update(dt)
+
     for r, row in enumerate(voxels):
         for c, voxel in enumerate(row):
-            scale = controller.get_scale(r, c, t)
+            scale = controller.get_scale(r, c)
             voxel.apply_scale(scale)
+
 
 
     for _ in range(SUBSTEPS):

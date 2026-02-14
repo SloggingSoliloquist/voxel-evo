@@ -2,7 +2,8 @@
 
 import pymunk
 import math
-from config import SPRING_STIFFNESS, SPRING_DAMPING
+import random
+from config import SPRING_STIFFNESS, SPRING_DAMPING, SHAPE_FRICTION
 
 class Voxel:
     def __init__(self, space, x, y, size):
@@ -11,6 +12,13 @@ class Voxel:
         self.bodies = []
         self.springs = []
         self.base_lengths = []
+        # self.theta      # current phase
+        # self.omega      # natural frequency
+        # self.amplitude  # contraction strength
+
+        self.theta = random.uniform(0, 2*math.pi)
+        self.omega = 2.0
+        self.amplitude = 3.0
 
         offsets = [
             (-size/2, -size/2),
@@ -20,10 +28,11 @@ class Voxel:
         ]
 
         for dx, dy in offsets:
-            body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, 5))
+            body = pymunk.Body(1, pymunk.moment_for_box(10, (5,5)))
             body.position = x + dx, y + dy
-            shape = pymunk.Circle(body, 5)
-            shape.friction = 1.0
+            shape = pymunk.Poly.create_box(body, (5, 5))
+
+            shape.friction = SHAPE_FRICTION
             space.add(body, shape)
             self.bodies.append(body)
 
@@ -54,7 +63,7 @@ class Voxel:
             self.springs.append(spring)
             self.base_lengths.append(length)
 
-    def modulate(self, t, amplitude=3, frequency=2):
+    def modulate(self, t, amplitude=8, frequency=10):
         for spring, base in zip(self.springs, self.base_lengths):
             new_length = base + amplitude * math.sin(frequency * t)
             spring.rest_length = max(5, new_length)

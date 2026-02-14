@@ -1,7 +1,7 @@
 # world.py
 
 import pymunk
-from config import WIDTH
+from config import WIDTH, GROUND_FRICTION
 
 def create_space(gravity):
     space = pymunk.Space()
@@ -15,5 +15,5 @@ def create_ground(space):
     body.position = (WIDTH // 2, 20)
 
     shape = pymunk.Poly.create_box(body, (WIDTH, 40))
-    shape.friction = 1.0
+    shape.friction = GROUND_FRICTION
     space.add(body, shape)

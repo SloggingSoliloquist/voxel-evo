@@ -1,0 +1,15 @@
+How the system is modeled: 
+The robot is a soft robot represented as a collection of voxels. Each voxel is deformable and resists deformation in
+the lateral, vertical and diagonal dimensions. This resistance to deformation is modeled using
+springs. The task is to achieve locomotion.
+
+The method of "actuation" or actually moving the robot doesn't involve applying any force on the robot, but instead
+modulating the rest lengths of the springs. Now this rest length changes over time, and if you want locomotion
+you need the rest length to be a function of time (so in addition to amplitude it also has a frequency and phase offset). 
+
+If we just want to simulate wave motion, we can give all springs the same frequency but a different phase depending on the
+position of their voxel in the body. But for locomotion to occur, we require dynamic assymmetry. Think of a car in which the
+front and back wheels move in opposite directions. The car is symmetric dynamically speaking and no locomotion occurs if
+both front and rear wheels apply the same torque. The principle here is to include assymmetry in the movement. 
+
+
