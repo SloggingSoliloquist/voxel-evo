@@ -5,12 +5,12 @@ import pymunk.pygame_util
 from config import *
 from world import create_space, create_ground
 from grid import build_grid
-from random_controller import RandomController
-controller = RandomController(ROWS, COLS, amplitude=0.2)
+from simple_wave_controller import WaveController
+#controller = RandomController(ROWS, COLS, amplitude=0.2)
 
 #controller = CPGController(ROWS, COLS, omega=2.0, K=1.0, amplitude=0.2)
 
-#controller = WaveController(ROWS, COLS, amplitude=0.2, frequency=3, phase_offset=0.6)
+controller = WaveController(ROWS, COLS, amplitude=0.2, frequency=3, phase_offset=0.6)
 
 
 pygame.init()
@@ -35,11 +35,11 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-    controller.update(dt)
+    #controller.update(dt) #don't need this for simple wave controller
 
     for r, row in enumerate(voxels):
         for c, voxel in enumerate(row):
-            scale = controller.get_scale(r, c)
+            scale = controller.get_scale(r, c,t) #(r, c, t) for the simple wave controller and (r, c) for the others
             voxel.apply_scale(scale)
 
 
