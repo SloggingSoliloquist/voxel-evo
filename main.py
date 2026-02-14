@@ -10,7 +10,7 @@ from simple_wave_controller import WaveController
 
 #controller = CPGController(ROWS, COLS, omega=2.0, K=1.0, amplitude=0.2)
 
-controller = WaveController(ROWS, COLS, amplitude=0.2, frequency=3, phase_offset=0.6)
+controller = WaveController(ROWS, COLS, amplitude=0.4, frequency=3, phase_offset=0.6)
 
 
 pygame.init()
