@@ -3,7 +3,7 @@
 import math
 
 class WaveController:
-    def __init__(self, rows, cols, amplitude=5, frequency=3, phase_offset=0.5):
+    def __init__(self, rows, cols, amplitude=0.6, frequency=3, phase_offset=0.5):
         self.rows = rows
         self.cols = cols
         self.amplitude = amplitude

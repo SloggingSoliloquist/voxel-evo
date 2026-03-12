@@ -6,6 +6,9 @@ from world import create_space, init_ground, extend_ground, terrain_end_x, terra
 from grid import build_grid
 from simple_wave_controller import WaveController
 
+ROWS = len(MORPHOLOGY)
+COLS = len(MORPHOLOGY[0])
+
 controller = WaveController(ROWS, COLS, amplitude=0.4, frequency=3, phase_offset=0.6)
 
 pygame.init()
@@ -20,25 +23,63 @@ space = create_space(GRAVITY)
 GROUND_Y = init_ground(space, start_x=0, start_y=200, length=800)
 
 # --- Draw options for Pygame ---
-draw_options = pymunk.pygame_util.DrawOptions(screen)
+
 
 # --- Spawn the worm slightly above the top of the ground ---
 voxels = build_grid(space, start_x=200, start_y=0)
 
 running = True
-t = 0
-
+t = 0          # physics/controller time, never resets
+eval_t = 0     # just for the evaluation window
 camera_x = 0
 camera_y = 0
 
 # --- Fitness tracking ---
 def get_head_body(voxels):
-    return voxels[0][0].bodies[0]
+    # Find first non-None voxel
+    for row in voxels:
+        for v in row:
+            if v is not None:
+                return v.bodies[0]
 
 def get_robot_x(voxels):
-    """Average x position across all voxel bodies."""
-    all_bodies = [b for row in voxels for v in row for b in v.bodies]
+    all_bodies = [b for row in voxels for v in row if v is not None for b in v.bodies]
     return sum(b.position.x for b in all_bodies) / len(all_bodies)
+
+def draw_ground(screen, terrain_points, camera_x, camera_y):
+    if len(terrain_points) < 2:
+        return
+    
+    # Draw terrain as a filled polygon down to the bottom of the screen
+    screen_pts = [(x - camera_x, y - camera_y) for x, y in terrain_points]
+    
+    # Add bottom corners to close the polygon
+    bottom = HEIGHT + 100
+    filled_pts = screen_pts + [(screen_pts[-1][0], bottom), (screen_pts[0][0], bottom)]
+    
+    pygame.draw.polygon(screen, (80, 80, 80), filled_pts)
+    pygame.draw.lines(screen, (180, 180, 180), False, screen_pts, 2)
+
+
+def draw_robot(screen, voxels, camera_x, camera_y):
+    for row in voxels:
+        for voxel in row:
+            if voxel is None:
+                continue
+
+            def to_screen(body):
+                return (body.position.x - camera_x, body.position.y - camera_y)
+
+            pts = [
+                to_screen(voxel.tl),
+                to_screen(voxel.tr),
+                to_screen(voxel.br),
+                to_screen(voxel.bl),
+            ]
+
+            color = voxel.get_color()
+            pygame.draw.polygon(screen, color, pts)
+            pygame.draw.polygon(screen, (200, 200, 200), pts, 1)
 
 start_x = None
 best_fitness = 0.0
@@ -48,6 +89,7 @@ EVAL_DURATION = 10.0  # seconds per evaluation window
 while running:
     dt = 1 / FPS
     t += dt
+    eval_t += dt
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -59,9 +101,11 @@ while running:
 
     # --- Update wave controller ---
     for r, row in enumerate(voxels):
-        for c, voxel in enumerate(row):
-            scale = controller.get_scale(r, c, t)
-            voxel.apply_scale(scale)
+            for c, voxel in enumerate(row):
+                if voxel is None:
+                    continue
+                scale = controller.get_scale(r, c, t)
+                voxel.apply_scale(scale)
 
     # --- Step physics ---
     for _ in range(SUBSTEPS):
@@ -73,9 +117,9 @@ while running:
     best_fitness = max(best_fitness, fitness)
 
     # --- Reset eval window every EVAL_DURATION seconds ---
-    if t >= EVAL_DURATION:
+    if eval_t >= EVAL_DURATION:
         print(f"[Eval complete] Fitness: {fitness:.2f} px | Best: {best_fitness:.2f} px")
-        t = 0
+        eval_t = 0
         start_x = current_x  # reset from current position
 
     # --- Camera follow ---
@@ -90,16 +134,24 @@ while running:
         extend_ground(space, count=20)
 
     # --- Draw ---
-    screen.fill((30, 30, 30))
-    draw_options.transform = pymunk.Transform.translation(-camera_x, -camera_y)
-    space.debug_draw(draw_options)
+
+
+    # --- Draw ---  
+    screen.fill((20, 20, 20))
+    draw_ground(screen, terrain_points, camera_x, camera_y)
+    draw_robot(screen, voxels, camera_x, camera_y)  # replaces the loop below
+
+    # DELETE these lines:
+    # for row in voxels:
+    #     for voxel in row:
+    #         voxel.draw(screen, camera_x, camera_y)
 
     # --- HUD overlay ---
-    elapsed_pct = min(t / EVAL_DURATION, 1.0)
+    elapsed_pct = min(eval_t / EVAL_DURATION, 1.0)
     hud_lines = [
         f"Fitness (distance): {fitness:.1f} px",
         f"Best this session:  {best_fitness:.1f} px",
-        f"Eval time: {t:.1f}s / {EVAL_DURATION:.0f}s  [{int(elapsed_pct*100)}%]",
+        f"Eval time: {eval_t:.1f}s / {EVAL_DURATION:.0f}s  [{int(elapsed_pct*100)}%]",
     ]
     for i, line in enumerate(hud_lines):
         surf = font.render(line, True, (220, 220, 100))

@@ -1,46 +1,60 @@
 # grid.py
 
-from voxel import Voxel
-from config import VOXEL_SIZE, ROWS, COLS, SPRING_STIFFNESS, SPRING_DAMPING
 import pymunk
+from voxel import Voxel
+from config import VOXEL_SIZE, SPRING_STIFFNESS, SPRING_DAMPING, SHAPE_FRICTION, MORPHOLOGY
 
 
-def build_grid(space, start_x, start_y):
+def _make_node(space, x, y):
+    body = pymunk.Body(1, pymunk.moment_for_box(1, (4, 4)))
+    body.position = x, y
+    shape = pymunk.Poly.create_box(body, (4, 4))
+    shape.friction = SHAPE_FRICTION
+    space.add(body, shape)
+    return body
+
+
+def build_grid(space, start_x, start_y, morphology=None):
+    if morphology is None:
+        morphology = MORPHOLOGY
+
+    rows = len(morphology)
+    cols = len(morphology[0])
+
+    # Find which node positions are actually needed
+    used = set()
+    for r in range(rows):
+        for c in range(cols):
+            if morphology[r][c]:
+                used.add((r,   c))
+                used.add((r,   c+1))
+                used.add((r+1, c))
+                used.add((r+1, c+1))
+
+    # Create only used nodes
+    nodes = {}
+    for (r, c) in used:
+        x = start_x + c * VOXEL_SIZE
+        y = start_y + r * VOXEL_SIZE
+        nodes[(r, c)] = _make_node(space, x, y)
+
+    # Build voxels
     voxels = []
-
-    for r in range(ROWS):
+    for r in range(rows):
         row = []
-        for c in range(COLS):
-            x = start_x + c * VOXEL_SIZE
-            y = start_y - r * VOXEL_SIZE
-            voxel = Voxel(space, x, y, VOXEL_SIZE)
+        for c in range(cols):
+            if not morphology[r][c]:
+                row.append(None)
+                continue
+            voxel = Voxel(
+                space,
+                tl=nodes[(r,   c)],
+                tr=nodes[(r,   c+1)],
+                bl=nodes[(r+1, c)],
+                br=nodes[(r+1, c+1)],
+                size=VOXEL_SIZE
+            )
             row.append(voxel)
         voxels.append(row)
 
-    _connect_neighbors(space, voxels)
-
     return voxels
-
-
-def _connect_neighbors(space, voxels):
-    for r in range(len(voxels)):
-        for c in range(len(voxels[0])):
-            if c < len(voxels[0]) - 1:
-                connect_voxels(space, voxels[r][c], voxels[r][c+1])
-            if r < len(voxels) - 1:
-                connect_voxels(space, voxels[r][c], voxels[r+1][c])
-
-
-def connect_voxels(space, v1, v2):
-    for b1 in v1.bodies:
-        for b2 in v2.bodies:
-            dist = (b1.position - b2.position).length
-            if dist < 10:
-                spring = pymunk.DampedSpring(
-                    b1, b2,
-                    (0,0),(0,0),
-                    dist,
-                    SPRING_STIFFNESS,
-                    SPRING_DAMPING
-                )
-                space.add(spring)
