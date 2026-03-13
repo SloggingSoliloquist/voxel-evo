@@ -81,6 +81,8 @@ def evaluate(genome, rows, cols, screen, font,
     voxels = build_grid(space, start_x=SPAWN_X, start_y=SPAWN_Y,
                         morphology=morphology)
 
+    active_voxels = sum(1 for row in voxels for v in row if v is not None)
+
     controller = WaveController(rows, cols, amplitude=0.6, frequency=3, phase_offset=0.5)
 
     clock = pygame.time.Clock()
@@ -118,7 +120,8 @@ def evaluate(genome, rows, cols, screen, font,
             space.step(dt / SUBSTEPS)
 
         current_x = get_robot_x(voxels)
-        fitness = current_x - start_x
+        raw_fitness = current_x - start_x
+        fitness = raw_fitness / active_voxels if active_voxels > 0 else 0.0
 
         # Camera
         head = get_head_body(voxels)
@@ -141,7 +144,7 @@ def evaluate(genome, rows, cols, screen, font,
         elapsed_pct = min(eval_t / EVAL_DURATION, 1.0)
         hud_lines = [
             f"Generation {generation}  |  Individual {individual}/{population_size}",
-            f"Fitness: {fitness:.1f} px",
+            f"Fitness (norm): {fitness:.2f} px/voxel  [{active_voxels} voxels]",
             f"Eval: {eval_t:.1f}s / {EVAL_DURATION:.0f}s  [{int(elapsed_pct*100)}%]",
         ]
         for i, line in enumerate(hud_lines):
