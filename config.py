@@ -3,7 +3,7 @@
 WIDTH  = 900
 HEIGHT = 600
 
-VOXEL_SIZE = 20  # scaled down from 40
+VOXEL_SIZE = 20
 
 ROWS = 8
 COLS = 8
@@ -18,17 +18,20 @@ RIGID    = 4
 
 MORPHOLOGY = [
     [4, 4, 4, 4, 4, 4, 4, 4],
-    [1, 2, 1, 2, 1, 2, 1, 2]
+    [1, 2, 1, 2, 1, 2, 1, 2],
+    [1, 2, 1, 2, 0, 2, 1, 2],
+    [1, 2, 1, 2, 0, 2, 1, 2],
+    [1, 2, 1, 0, 0, 2, 1, 2],
+    [1, 2, 0, 0, 0, 2, 1, 2]
 ]
 
-# Scale physics relative to original VOXEL_SIZE of 40
-_S = VOXEL_SIZE / 40  # 0.5 at VOXEL_SIZE=20
+_S = VOXEL_SIZE / 40  # 0.5
 
-SPRING_STIFFNESS = int(500 * _S)        # 250
-SPRING_DAMPING   = 20 * _S              # 10
-GRAVITY          = (0, 900)             # unchanged
+SPRING_STIFFNESS = int(500 * _S * 4)   # 4x multiplier to support more rows
+SPRING_DAMPING   = 20 * _S * 2         # higher damping to prevent oscillation
+GRAVITY          = (0, 400)            # reduced from 900 — less crushing force
 
-SUBSTEPS = 3
+SUBSTEPS = 10                          # up from 3 — more stable with tall structures
 FPS      = 60
 
 GROUND_FRICTION = 2.0

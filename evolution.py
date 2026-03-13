@@ -19,12 +19,6 @@ GENOME_LENGTH = ROWS * COLS
 
 VOXEL_TYPES = [EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID]
 
-# Sampling probabilities per voxel type: [EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID]
-# Biased toward muscles to encourage locomotion from early generations
-
-LOG_DIR = "evo_logs"
-os.makedirs(LOG_DIR, exist_ok=True)
-
 
 # ------------------------------------------------------------------
 # Connectivity check
@@ -68,12 +62,10 @@ def is_connected(genome):
 # ------------------------------------------------------------------
 
 def sample_voxel():
-    """Sample a single voxel type according to VOXEL_PD."""
     return random.choices(VOXEL_TYPES, weights=VOXEL_PD, k=1)[0]
 
 
 def random_genome():
-    """Generate a random genome using VOXEL_PD, retrying until connected."""
     while True:
         genome = [sample_voxel() for _ in range(GENOME_LENGTH)]
         if is_connected(genome):
@@ -81,7 +73,6 @@ def random_genome():
 
 
 def mutate(genome):
-    """Mutate using VOXEL_PD for replacement, retrying until connected."""
     while True:
         candidate = [
             sample_voxel() if random.random() < MUTATION_RATE else gene
@@ -92,7 +83,6 @@ def mutate(genome):
 
 
 def crossover(a, b):
-    """Single-point crossover, retrying until connected."""
     while True:
         point = random.randint(1, GENOME_LENGTH - 1)
         child = a[:point] + b[point:]
@@ -106,7 +96,7 @@ def tournament_select(population, fitnesses, k=TOURNAMENT_K):
     return population[best]
 
 
-def log_generation(generation, population, fitnesses):
+def log_generation(generation, population, fitnesses, log_dir):
     data = {
         "generation": generation,
         "best_fitness": max(fitnesses),
@@ -114,7 +104,7 @@ def log_generation(generation, population, fitnesses):
         "best_genome": population[fitnesses.index(max(fitnesses))],
         "all_fitnesses": fitnesses,
     }
-    path = os.path.join(LOG_DIR, f"gen_{generation:04d}.json")
+    path = os.path.join(log_dir, f"gen_{generation:04d}.json")
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
     print(f"[Gen {generation:>3}] best={data['best_fitness']:.1f}px  "
@@ -127,6 +117,12 @@ def log_generation(generation, population, fitnesses):
 # ------------------------------------------------------------------
 
 def evolve():
+    # --- Prompt for log directory ---
+    user_input = input("Log directory [evo_logs]: ").strip()
+    log_dir = user_input if user_input else "evo_logs"
+    os.makedirs(log_dir, exist_ok=True)
+    print(f"Logging to: {log_dir}/")
+
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
     pygame.display.set_caption("Morphology Evolution")
@@ -148,7 +144,7 @@ def evolve():
             fitnesses.append(fitness)
             print(f"    → fitness: {fitness:.1f} px")
 
-        log_generation(generation, population, fitnesses)
+        log_generation(generation, population, fitnesses, log_dir)
 
         ranked = sorted(zip(fitnesses, population), key=lambda x: x[0], reverse=True)
         population_sorted = [g for _, g in ranked]
