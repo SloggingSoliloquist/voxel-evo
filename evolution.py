@@ -4,20 +4,23 @@ import pygame
 import random
 import json
 import os
-from config import ROWS, COLS
+from config import ROWS, COLS, VOXEL_PD
 from voxel import EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID
 from evaluator import evaluate
 
 # --- GA parameters ---
 POPULATION_SIZE = 20
 GENERATIONS     = 50
-TOURNAMENT_K    = 3       # competitors per tournament
-MUTATION_RATE   = 0.1     # probability of each cell mutating
-ELITISM         = 1       # number of top genomes carried over unchanged
+TOURNAMENT_K    = 3
+MUTATION_RATE   = 0.1
+ELITISM         = 1
 
 GENOME_LENGTH = ROWS * COLS
 
 VOXEL_TYPES = [EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID]
+
+# Sampling probabilities per voxel type: [EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID]
+# Biased toward muscles to encourage locomotion from early generations
 
 LOG_DIR = "evo_logs"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -32,10 +35,6 @@ def genome_to_morphology(genome):
 
 
 def is_connected(genome):
-    """
-    Returns True if all active (non-empty) voxels form a single
-    connected component via shared edges.
-    """
     grid = genome_to_morphology(genome)
 
     active = [
@@ -46,9 +45,8 @@ def is_connected(genome):
     ]
 
     if len(active) == 0:
-        return False  # empty genome is invalid
+        return False
 
-    # Flood fill from first active cell
     visited = set()
     stack = [active[0]]
     while stack:
@@ -69,19 +67,24 @@ def is_connected(genome):
 # Genome utilities
 # ------------------------------------------------------------------
 
+def sample_voxel():
+    """Sample a single voxel type according to VOXEL_PD."""
+    return random.choices(VOXEL_TYPES, weights=VOXEL_PD, k=1)[0]
+
+
 def random_genome():
-    """Generate a random genome, retrying until it is connected."""
+    """Generate a random genome using VOXEL_PD, retrying until connected."""
     while True:
-        genome = [random.choice(VOXEL_TYPES) for _ in range(GENOME_LENGTH)]
+        genome = [sample_voxel() for _ in range(GENOME_LENGTH)]
         if is_connected(genome):
             return genome
 
 
 def mutate(genome):
-    """Mutate a genome, retrying until the result is connected."""
+    """Mutate using VOXEL_PD for replacement, retrying until connected."""
     while True:
         candidate = [
-            random.choice(VOXEL_TYPES) if random.random() < MUTATION_RATE else gene
+            sample_voxel() if random.random() < MUTATION_RATE else gene
             for gene in genome
         ]
         if is_connected(candidate):
@@ -89,7 +92,7 @@ def mutate(genome):
 
 
 def crossover(a, b):
-    """Single-point crossover, retrying until the result is connected."""
+    """Single-point crossover, retrying until connected."""
     while True:
         point = random.randint(1, GENOME_LENGTH - 1)
         child = a[:point] + b[point:]
@@ -98,7 +101,6 @@ def crossover(a, b):
 
 
 def tournament_select(population, fitnesses, k=TOURNAMENT_K):
-    """Pick k random individuals, return the genome of the best."""
     competitors = random.sample(range(len(population)), k)
     best = max(competitors, key=lambda i: fitnesses[i])
     return population[best]
@@ -130,7 +132,6 @@ def evolve():
     pygame.display.set_caption("Morphology Evolution")
     font = pygame.font.SysFont("monospace", 18)
 
-    # Initial random population — all guaranteed connected
     population = [random_genome() for _ in range(POPULATION_SIZE)]
 
     for generation in range(1, GENERATIONS + 1):
@@ -149,17 +150,14 @@ def evolve():
 
         log_generation(generation, population, fitnesses)
 
-        # Sort by fitness descending
         ranked = sorted(zip(fitnesses, population), key=lambda x: x[0], reverse=True)
         population_sorted = [g for _, g in ranked]
 
         new_population = []
 
-        # Elitism
         for i in range(ELITISM):
             new_population.append(population_sorted[i])
 
-        # Tournament selection + crossover + mutation
         while len(new_population) < POPULATION_SIZE:
             parent_a = tournament_select(population, fitnesses)
             parent_b = tournament_select(population, fitnesses)

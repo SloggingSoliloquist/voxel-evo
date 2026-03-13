@@ -7,6 +7,7 @@ VOXEL_SIZE = 40
 
 ROWS=4
 COLS=8
+VOXEL_PD = [0.2, 0.3, 0.3, 0.1, 0.1]
 
 # Voxel types
 EMPTY    = 0
