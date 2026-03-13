@@ -4,7 +4,7 @@ import pygame
 import random
 import json
 import os
-from config import MORPHOLOGY
+from config import ROWS, COLS
 from voxel import EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID
 from evaluator import evaluate
 
@@ -15,8 +15,6 @@ TOURNAMENT_K    = 3       # competitors per tournament
 MUTATION_RATE   = 0.1     # probability of each cell mutating
 ELITISM         = 1       # number of top genomes carried over unchanged
 
-ROWS = len(MORPHOLOGY)
-COLS = len(MORPHOLOGY[0])
 GENOME_LENGTH = ROWS * COLS
 
 VOXEL_TYPES = [EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID]
@@ -26,24 +24,77 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 
 # ------------------------------------------------------------------
+# Connectivity check
+# ------------------------------------------------------------------
+
+def genome_to_morphology(genome):
+    return [genome[r * COLS:(r + 1) * COLS] for r in range(ROWS)]
+
+
+def is_connected(genome):
+    """
+    Returns True if all active (non-empty) voxels form a single
+    connected component via shared edges.
+    """
+    grid = genome_to_morphology(genome)
+
+    active = [
+        (r, c)
+        for r in range(ROWS)
+        for c in range(COLS)
+        if grid[r][c] != EMPTY
+    ]
+
+    if len(active) == 0:
+        return False  # empty genome is invalid
+
+    # Flood fill from first active cell
+    visited = set()
+    stack = [active[0]]
+    while stack:
+        r, c = stack.pop()
+        if (r, c) in visited:
+            continue
+        visited.add((r, c))
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < ROWS and 0 <= nc < COLS:
+                if grid[nr][nc] != EMPTY and (nr, nc) not in visited:
+                    stack.append((nr, nc))
+
+    return len(visited) == len(active)
+
+
+# ------------------------------------------------------------------
 # Genome utilities
 # ------------------------------------------------------------------
 
 def random_genome():
-    return [random.choice(VOXEL_TYPES) for _ in range(GENOME_LENGTH)]
+    """Generate a random genome, retrying until it is connected."""
+    while True:
+        genome = [random.choice(VOXEL_TYPES) for _ in range(GENOME_LENGTH)]
+        if is_connected(genome):
+            return genome
 
 
 def mutate(genome):
-    return [
-        random.choice(VOXEL_TYPES) if random.random() < MUTATION_RATE else gene
-        for gene in genome
-    ]
+    """Mutate a genome, retrying until the result is connected."""
+    while True:
+        candidate = [
+            random.choice(VOXEL_TYPES) if random.random() < MUTATION_RATE else gene
+            for gene in genome
+        ]
+        if is_connected(candidate):
+            return candidate
 
 
 def crossover(a, b):
-    """Single-point crossover."""
-    point = random.randint(1, GENOME_LENGTH - 1)
-    return a[:point] + b[point:]
+    """Single-point crossover, retrying until the result is connected."""
+    while True:
+        point = random.randint(1, GENOME_LENGTH - 1)
+        child = a[:point] + b[point:]
+        if is_connected(child):
+            return child
 
 
 def tournament_select(population, fitnesses, k=TOURNAMENT_K):
@@ -51,10 +102,6 @@ def tournament_select(population, fitnesses, k=TOURNAMENT_K):
     competitors = random.sample(range(len(population)), k)
     best = max(competitors, key=lambda i: fitnesses[i])
     return population[best]
-
-
-def genome_to_morphology(genome):
-    return [genome[r * COLS:(r + 1) * COLS] for r in range(ROWS)]
 
 
 def log_generation(generation, population, fitnesses):
@@ -83,13 +130,12 @@ def evolve():
     pygame.display.set_caption("Morphology Evolution")
     font = pygame.font.SysFont("monospace", 18)
 
-    # Initial random population
+    # Initial random population — all guaranteed connected
     population = [random_genome() for _ in range(POPULATION_SIZE)]
 
     for generation in range(1, GENERATIONS + 1):
         fitnesses = []
 
-        # Evaluate every individual sequentially
         for i, genome in enumerate(population):
             print(f"  Evaluating gen {generation}, individual {i+1}/{POPULATION_SIZE}...")
             fitness = evaluate(
@@ -103,19 +149,17 @@ def evolve():
 
         log_generation(generation, population, fitnesses)
 
-        # --- Selection + reproduction ---
         # Sort by fitness descending
         ranked = sorted(zip(fitnesses, population), key=lambda x: x[0], reverse=True)
-        fitnesses_sorted = [f for f, _ in ranked]
         population_sorted = [g for _, g in ranked]
 
         new_population = []
 
-        # Elitism: carry top genomes unchanged
+        # Elitism
         for i in range(ELITISM):
             new_population.append(population_sorted[i])
 
-        # Fill rest with tournament selection + crossover + mutation
+        # Tournament selection + crossover + mutation
         while len(new_population) < POPULATION_SIZE:
             parent_a = tournament_select(population, fitnesses)
             parent_b = tournament_select(population, fitnesses)

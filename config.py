@@ -5,6 +5,9 @@ HEIGHT = 600
 
 VOXEL_SIZE = 40
 
+ROWS=4
+COLS=8
+
 # Voxel types
 EMPTY    = 0
 MUSCLE_A = 1
