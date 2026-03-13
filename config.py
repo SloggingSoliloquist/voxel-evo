@@ -7,7 +7,8 @@ VOXEL_SIZE = 40
 
 
 MORPHOLOGY = [
-    [1, 1, 1, 1, 1, 1, 1, 1]
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1,1,1, 1, 1, 1]
 ]
 
 SPRING_STIFFNESS = 500
@@ -17,5 +18,5 @@ GRAVITY = (0, 900)
 SUBSTEPS = 3
 FPS = 60
 
-GROUND_FRICTION=1
+GROUND_FRICTION=2.0
 SHAPE_FRICTION=1.5

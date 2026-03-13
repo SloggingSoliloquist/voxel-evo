@@ -9,7 +9,7 @@ from simple_wave_controller import WaveController
 ROWS = len(MORPHOLOGY)
 COLS = len(MORPHOLOGY[0])
 
-controller = WaveController(ROWS, COLS, amplitude=0.4, frequency=3, phase_offset=0.6)
+controller = WaveController(ROWS, COLS, amplitude=0.6, frequency=3, phase_offset=0.5)
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
