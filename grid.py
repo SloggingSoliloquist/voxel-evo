@@ -1,7 +1,7 @@
 # grid.py
 
 import pymunk
-from voxel import Voxel
+from voxel import Voxel, EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID
 from config import VOXEL_SIZE, SPRING_STIFFNESS, SPRING_DAMPING, SHAPE_FRICTION, MORPHOLOGY
 
 
@@ -21,38 +21,39 @@ def build_grid(space, start_x, start_y, morphology=None):
     rows = len(morphology)
     cols = len(morphology[0])
 
-    # Find which node positions are actually needed
+    # --- Shared node grid ---
     used = set()
     for r in range(rows):
         for c in range(cols):
-            if morphology[r][c]:
-                used.add((r,   c))
-                used.add((r,   c+1))
-                used.add((r+1, c))
-                used.add((r+1, c+1))
+            if morphology[r][c] != EMPTY:
+                used.add((r,     c))
+                used.add((r,     c + 1))
+                used.add((r + 1, c))
+                used.add((r + 1, c + 1))
 
-    # Create only used nodes
     nodes = {}
     for (r, c) in used:
         x = start_x + c * VOXEL_SIZE
         y = start_y + r * VOXEL_SIZE
         nodes[(r, c)] = _make_node(space, x, y)
 
-    # Build voxels
+    # --- Build voxels ---
     voxels = []
     for r in range(rows):
         row = []
         for c in range(cols):
-            if not morphology[r][c]:
+            cell = morphology[r][c]
+            if cell == EMPTY:
                 row.append(None)
                 continue
             voxel = Voxel(
                 space,
-                tl=nodes[(r,   c)],
-                tr=nodes[(r,   c+1)],
-                bl=nodes[(r+1, c)],
-                br=nodes[(r+1, c+1)],
-                size=VOXEL_SIZE
+                tl=nodes[(r,     c)],
+                tr=nodes[(r,     c + 1)],
+                bl=nodes[(r + 1, c)],
+                br=nodes[(r + 1, c + 1)],
+                size=VOXEL_SIZE,
+                voxel_type=cell,
             )
             row.append(voxel)
         voxels.append(row)

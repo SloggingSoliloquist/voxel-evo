@@ -5,10 +5,16 @@ HEIGHT = 600
 
 VOXEL_SIZE = 40
 
+# Voxel types
+EMPTY    = 0
+MUSCLE_A = 1
+MUSCLE_B = 2
+SOFT     = 3
+RIGID    = 4
 
 MORPHOLOGY = [
-    [1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1,1,1, 1, 1, 1]
+    [4, 4, 4, 4, 4, 4, 4, 4],
+    [1, 2, 1, 2, 1, 2, 1, 2]
 ]
 
 SPRING_STIFFNESS = 500
@@ -18,5 +24,5 @@ GRAVITY = (0, 900)
 SUBSTEPS = 3
 FPS = 60
 
-GROUND_FRICTION=2.0
-SHAPE_FRICTION=1.5
+GROUND_FRICTION = 2.0
+SHAPE_FRICTION = 1.5
