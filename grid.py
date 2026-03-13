@@ -6,9 +6,11 @@ from config import VOXEL_SIZE, SPRING_STIFFNESS, SPRING_DAMPING, SHAPE_FRICTION,
 
 
 def _make_node(space, x, y):
-    body = pymunk.Body(1, pymunk.moment_for_box(1, (4, 4)))
+    mass = (VOXEL_SIZE / 40) ** 2  # 0.25 at VOXEL_SIZE=20
+    moment = pymunk.moment_for_box(mass, (VOXEL_SIZE / 10, VOXEL_SIZE / 10))
+    body = pymunk.Body(mass, moment)
     body.position = x, y
-    shape = pymunk.Poly.create_box(body, (4, 4))
+    shape = pymunk.Poly.create_box(body, (VOXEL_SIZE / 10, VOXEL_SIZE / 10))
     shape.friction = SHAPE_FRICTION
     space.add(body, shape)
     return body
