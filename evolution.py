@@ -6,36 +6,35 @@ import json
 import os
 from config import ROWS, COLS, VOXEL_PD
 from voxel import EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID
+from cppn import CPPN
 from evaluator import evaluate
 
 # --- GA parameters ---
-POPULATION_SIZE = 20
-GENERATIONS     = 50
-TOURNAMENT_K    = 3
-MUTATION_RATE   = 0.1
-ELITISM         = 1
+POPULATION_SIZE   = 20
+GENERATIONS       = 50
+TOURNAMENT_K      = 3
+MUTATION_RATE     = 0.1    # probability of mutating each weight
+MUTATION_STRENGTH = 0.5    # gaussian std for weight perturbation
+ELITISM           = 1
 
-GENOME_LENGTH = ROWS * COLS
-
-VOXEL_TYPES = [EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID]
+# Genome length comes from the CPPN architecture
+_cppn_ref     = CPPN()
+GENOME_LENGTH = _cppn_ref.genome_length
 
 
 # ------------------------------------------------------------------
-# Connectivity check
+# Validity check — decoded morphology must be connected + have actuator
 # ------------------------------------------------------------------
 
-def genome_to_morphology(genome):
-    return [genome[r * COLS:(r + 1) * COLS] for r in range(ROWS)]
-
-
-def is_connected(genome):
-    grid = genome_to_morphology(genome)
+def is_connected(morphology):
+    rows = len(morphology)
+    cols = len(morphology[0])
 
     active = [
         (r, c)
-        for r in range(ROWS)
-        for c in range(COLS)
-        if grid[r][c] != EMPTY
+        for r in range(rows)
+        for c in range(cols)
+        if morphology[r][c] != EMPTY
     ]
 
     if len(active) == 0:
@@ -50,43 +49,55 @@ def is_connected(genome):
         visited.add((r, c))
         for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             nr, nc = r + dr, c + dc
-            if 0 <= nr < ROWS and 0 <= nc < COLS:
-                if grid[nr][nc] != EMPTY and (nr, nc) not in visited:
+            if 0 <= nr < rows and 0 <= nc < cols:
+                if morphology[nr][nc] != EMPTY and (nr, nc) not in visited:
                     stack.append((nr, nc))
 
     return len(visited) == len(active)
+
+
+def has_actuator(morphology):
+    return any(
+        cell in (MUSCLE_A, MUSCLE_B)
+        for row in morphology
+        for cell in row
+    )
+
+
+def is_valid(genome):
+    morphology = CPPN(genome).decode()
+    return is_connected(morphology) and has_actuator(morphology)
 
 
 # ------------------------------------------------------------------
 # Genome utilities
 # ------------------------------------------------------------------
 
-def sample_voxel():
-    return random.choices(VOXEL_TYPES, weights=VOXEL_PD, k=1)[0]
-
-
 def random_genome():
+    """Random CPPN weights, retrying until decoded morphology is valid."""
     while True:
-        genome = [sample_voxel() for _ in range(GENOME_LENGTH)]
-        if is_connected(genome):
+        genome = [random.gauss(0, 1.0) for _ in range(GENOME_LENGTH)]
+        if is_valid(genome):
             return genome
 
 
 def mutate(genome):
+    """Gaussian perturbation on weights, retrying until valid."""
     while True:
         candidate = [
-            sample_voxel() if random.random() < MUTATION_RATE else gene
-            for gene in genome
+            w + random.gauss(0, MUTATION_STRENGTH) if random.random() < MUTATION_RATE else w
+            for w in genome
         ]
-        if is_connected(candidate):
+        if is_valid(candidate):
             return candidate
 
 
 def crossover(a, b):
+    """Single-point crossover on weight vectors, retrying until valid."""
     while True:
         point = random.randint(1, GENOME_LENGTH - 1)
         child = a[:point] + b[point:]
-        if is_connected(child):
+        if is_valid(child):
             return child
 
 
@@ -102,6 +113,7 @@ def log_generation(generation, population, fitnesses, log_dir):
         "best_fitness": max(fitnesses),
         "mean_fitness": sum(fitnesses) / len(fitnesses),
         "best_genome": population[fitnesses.index(max(fitnesses))],
+        "best_morphology": CPPN(population[fitnesses.index(max(fitnesses))]).decode(),
         "all_fitnesses": fitnesses,
     }
     path = os.path.join(log_dir, f"gen_{generation:04d}.json")
@@ -117,15 +129,15 @@ def log_generation(generation, population, fitnesses, log_dir):
 # ------------------------------------------------------------------
 
 def evolve():
-    # --- Prompt for log directory ---
     user_input = input("Log directory [evo_logs]: ").strip()
     log_dir = user_input if user_input else "evo_logs"
     os.makedirs(log_dir, exist_ok=True)
     print(f"Logging to: {log_dir}/")
+    print(f"CPPN genome length: {GENOME_LENGTH} weights")
 
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
-    pygame.display.set_caption("Morphology Evolution")
+    pygame.display.set_caption("CPPN Morphology Evolution")
     font = pygame.font.SysFont("monospace", 18)
 
     population = [random_genome() for _ in range(POPULATION_SIZE)]
@@ -135,8 +147,12 @@ def evolve():
 
         for i, genome in enumerate(population):
             print(f"  Evaluating gen {generation}, individual {i+1}/{POPULATION_SIZE}...")
+
+            # Decode CPPN genome to morphology for the evaluator
+            morphology = CPPN(genome).decode()
+
             fitness = evaluate(
-                genome, ROWS, COLS, screen, font,
+                morphology, ROWS, COLS, screen, font,
                 generation=generation,
                 individual=i + 1,
                 population_size=POPULATION_SIZE,

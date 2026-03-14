@@ -2,7 +2,6 @@
 
 import pygame
 import pymunk
-import math
 from config import (
     WIDTH, HEIGHT, VOXEL_SIZE, GRAVITY, SUBSTEPS, FPS,
     GROUND_FRICTION, SHAPE_FRICTION, SPRING_STIFFNESS, SPRING_DAMPING
@@ -13,9 +12,8 @@ from grid import build_grid
 from simple_wave_controller import WaveController
 from voxel import MUSCLE_A, MUSCLE_B
 
-EVAL_DURATION = 10.0   # seconds per genome evaluation
-SPAWN_X       = 200
-SPAWN_Y       = 0
+EVAL_DURATION = 10.0
+GROUND_Y_FRAC = 0.75
 
 
 def get_robot_x(voxels):
@@ -59,28 +57,22 @@ def draw_robot(screen, voxels, camera_x, camera_y):
             pygame.draw.polygon(screen, (200, 200, 200), pts, 1)
 
 
-def evaluate(genome, rows, cols, screen, font,
+def evaluate(morphology, rows, cols, screen, font,
              generation=0, individual=0, population_size=0):
     """
-    Run one genome for EVAL_DURATION seconds.
+    Run one morphology for EVAL_DURATION seconds.
     Returns fitness (distance travelled in pixels).
 
-    genome: flat list of ints, length rows*cols
-    screen/font: shared pygame surface and font (created once by the caller)
+    morphology: 2D list of voxel type ints, already decoded from CPPN
     """
-    # Reshape genome into 2D morphology
-    morphology = [
-        genome[r * cols:(r + 1) * cols]
-        for r in range(rows)
-    ]
-
-    # Fresh physics space
     space = create_space(GRAVITY)
-    init_ground(space, start_x=0, start_y=200, length=800)
+    ground_y = int(HEIGHT * GROUND_Y_FRAC)
+    init_ground(space, start_x=0, start_y=ground_y, length=WIDTH * 3)
 
-    voxels = build_grid(space, start_x=SPAWN_X, start_y=SPAWN_Y,
-                        morphology=morphology)
+    robot_height = rows * VOXEL_SIZE
+    spawn_y = ground_y - robot_height - 5
 
+    voxels = build_grid(space, start_x=200, start_y=spawn_y, morphology=morphology)
     controller = WaveController(rows, cols, amplitude=0.6, frequency=3, phase_offset=0.5)
 
     clock = pygame.time.Clock()
@@ -104,7 +96,6 @@ def evaluate(genome, rows, cols, screen, font,
         if start_x is None:
             start_x = get_robot_x(voxels)
 
-        # Actuate muscle voxels
         for r, row in enumerate(voxels):
             for c, voxel in enumerate(row):
                 if voxel is None:
@@ -120,24 +111,20 @@ def evaluate(genome, rows, cols, screen, font,
         current_x = get_robot_x(voxels)
         fitness = current_x - start_x
 
-        # Camera
         head = get_head_body(voxels)
         if head:
-            target_x = head.position.x + 100 - WIDTH / 3
-            target_y = head.position.y - HEIGHT / 2
+            target_x = head.position.x - WIDTH / 2
+            target_y = head.position.y - int(HEIGHT * 0.4)
             camera_x += (target_x - camera_x) * 0.1
             camera_y += (target_y - camera_y) * 0.1
 
-        # Extend ground
-        if terrain_end_x() - (head.position.x if head else 0) < 600:
-            extend_ground(space, count=20)
+        if terrain_end_x() - (head.position.x if head else 0) < WIDTH:
+            extend_ground(space, count=30)
 
-        # Draw
         screen.fill((20, 20, 20))
         draw_ground(screen, terrain_points, camera_x, camera_y)
         draw_robot(screen, voxels, camera_x, camera_y)
 
-        # HUD
         elapsed_pct = min(eval_t / EVAL_DURATION, 1.0)
         hud_lines = [
             f"Generation {generation}  |  Individual {individual}/{population_size}",
@@ -148,8 +135,8 @@ def evaluate(genome, rows, cols, screen, font,
             surf = font.render(line, True, (220, 220, 100))
             screen.blit(surf, (12, 12 + i * 22))
 
-        bar_w = 200
-        bar_h = 10
+        bar_w = 300
+        bar_h = 12
         pygame.draw.rect(screen, (80, 80, 80),
                          (12, 12 + len(hud_lines) * 22, bar_w, bar_h))
         pygame.draw.rect(screen, (100, 220, 100),
