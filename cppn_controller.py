@@ -1,18 +1,15 @@
-# cppn.py
+# cppn_controller.py
 
 import math
 import random
 from config import ROWS, COLS
-from voxel import EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID
 
 # --- Network architecture ---
-INPUT_SIZE  = 3   # (x, y, d) — normalized position + distance from center
+INPUT_SIZE  = 5   # (x, y, d, theta, bias)
 HIDDEN_SIZE = 16
-OUTPUT_SIZE = 5   # (presence, muscle_a, muscle_b, soft, rigid) logits
+OUTPUT_SIZE = 4   # (muscle_probability, frequency, phase, amplitude)
 
-VOXEL_TYPES_ACTIVE = [MUSCLE_A, MUSCLE_B, SOFT, RIGID]
-
-# --- Activation functions ---
+# --- Activation functions (same set as morphology CPPN) ---
 def sigmoid(x):
     x = max(-20, min(20, x))
     return 1.0 / (1.0 + math.exp(-x))
@@ -23,6 +20,9 @@ def tanh_act(x):
 def sin_act(x):
     return math.sin(x)
 
+def cos_act(x):
+    return math.cos(x)
+
 def gauss_act(x):
     return math.exp(-x * x)
 
@@ -32,33 +32,34 @@ def abs_act(x):
 def linear(x):
     return x
 
-ACTIVATION_FUNCTIONS = [tanh_act, sin_act, gauss_act, abs_act, linear]
+ACTIVATION_FUNCTIONS = [tanh_act, sin_act, cos_act, gauss_act, abs_act, linear, sigmoid]
 N_ACTIVATIONS = len(ACTIVATION_FUNCTIONS)
 
+# Threshold above which a muscle voxel is actually activated
+MUSCLE_PROB_THRESHOLD = 0.5
 
-class CPPN:
+
+class CPPNController:
     """
-    Fixed-topology CPPN: 3 -> HIDDEN_SIZE -> HIDDEN_SIZE -> 5
+    Fixed-topology CPPN controller: 5 -> 16 -> 16 -> 4
 
-    Genome is a flat list:
-        W1:     INPUT_SIZE  x HIDDEN_SIZE floats
-        b1:     HIDDEN_SIZE floats
-        acts1:  HIDDEN_SIZE ints (activation index per node, layer 1)
-        W2:     HIDDEN_SIZE x HIDDEN_SIZE floats
-        b2:     HIDDEN_SIZE floats
-        acts2:  HIDDEN_SIZE ints (activation index per node, layer 2)
-        W3:     HIDDEN_SIZE x OUTPUT_SIZE floats
-        b3:     OUTPUT_SIZE floats
+    Inputs: (x, y, d, theta, bias)
 
-    acts are stored as floats in [0, N_ACTIVATIONS) and floored when used,
-    so they participate in crossover naturally without special handling.
+    Outputs:
+        muscle_probability : sigmoid → [0,1], thresholded to decide if voxel fires
+        frequency          : 0.5 + sigmoid * 5.5 → [0.5, 6.0] Hz
+        phase              : tanh * π → [-π, π]
+        amplitude          : 0.2 + sigmoid * 0.6 → [0.2, 0.8]
+
+    Genome layout (identical structure to morphology CPPN):
+        W1, b1, acts1 / W2, b2, acts2 / W3, b3
     """
 
     def __init__(self, weights=None):
         self.genome_length = (
-            INPUT_SIZE  * HIDDEN_SIZE + HIDDEN_SIZE + HIDDEN_SIZE +  # W1, b1, acts1
-            HIDDEN_SIZE * HIDDEN_SIZE + HIDDEN_SIZE + HIDDEN_SIZE +  # W2, b2, acts2
-            HIDDEN_SIZE * OUTPUT_SIZE + OUTPUT_SIZE                   # W3, b3
+            INPUT_SIZE  * HIDDEN_SIZE + HIDDEN_SIZE + HIDDEN_SIZE +
+            HIDDEN_SIZE * HIDDEN_SIZE + HIDDEN_SIZE + HIDDEN_SIZE +
+            HIDDEN_SIZE * OUTPUT_SIZE + OUTPUT_SIZE
         )
 
         if weights is not None:
@@ -72,34 +73,22 @@ class CPPN:
 
     def _random_weights(self):
         w = []
-        idx = 0
-        total = self.genome_length
-
-        # W1
         for _ in range(INPUT_SIZE * HIDDEN_SIZE):
             w.append(random.gauss(0, 1.0))
-        # b1
         for _ in range(HIDDEN_SIZE):
             w.append(random.gauss(0, 1.0))
-        # acts1 — random float in [0, N_ACTIVATIONS)
         for _ in range(HIDDEN_SIZE):
             w.append(random.uniform(0, N_ACTIVATIONS))
-        # W2
         for _ in range(HIDDEN_SIZE * HIDDEN_SIZE):
             w.append(random.gauss(0, 1.0))
-        # b2
         for _ in range(HIDDEN_SIZE):
             w.append(random.gauss(0, 1.0))
-        # acts2
         for _ in range(HIDDEN_SIZE):
             w.append(random.uniform(0, N_ACTIVATIONS))
-        # W3
         for _ in range(HIDDEN_SIZE * OUTPUT_SIZE):
             w.append(random.gauss(0, 1.0))
-        # b3
         for _ in range(OUTPUT_SIZE):
             w.append(random.gauss(0, 1.0))
-
         return w
 
     def _unpack(self):
@@ -132,51 +121,44 @@ class CPPN:
 
     def forward(self, x, y):
         """
-        Query CPPN at normalized (x, y) in [-1, 1].
-        d = distance from center, also in [0, ~1.414], normalized to [0, 1].
+        Query controller at normalized (x, y).
+        Returns (active, frequency, phase, amplitude).
+        active is bool — whether this voxel should fire at all.
         """
-        d = math.sqrt(x * x + y * y) / math.sqrt(2)  # normalize to [0, 1]
-        inp = [x, y, d]
+        d     = math.sqrt(x * x + y * y) / math.sqrt(2)
+        theta = math.atan2(y, x)
+        inp   = [x, y, d, theta, 1.0]
 
-        # Layer 1 — per-node activation functions
         h1_pre = self._matmul_add(self.W1, self.b1, inp, INPUT_SIZE, HIDDEN_SIZE)
         h1 = [self.acts1[i](v) for i, v in enumerate(h1_pre)]
 
-        # Layer 2 — per-node activation functions
         h2_pre = self._matmul_add(self.W2, self.b2, h1, HIDDEN_SIZE, HIDDEN_SIZE)
         h2 = [self.acts2[i](v) for i, v in enumerate(h2_pre)]
 
-        # Output layer — linear
         out = self._matmul_add(self.W3, self.b3, h2, HIDDEN_SIZE, OUTPUT_SIZE)
 
-        return out  # [presence_logit, muscle_a_logit, muscle_b_logit, soft_logit, rigid_logit]
+        muscle_prob = sigmoid(out[0])
+        active      = muscle_prob >= MUSCLE_PROB_THRESHOLD
+        frequency   = 0.5 + sigmoid(out[1]) * 5.5   # [0.5, 6.0]
+        phase       = math.tanh(out[2]) * math.pi    # [-π, π]
+        amplitude   = 0.2 + sigmoid(out[3]) * 0.6    # [0.2, 0.8]
 
-    def decode(self, rows=ROWS, cols=COLS, presence_threshold=0.0):
+        return active, frequency, phase, amplitude
+
+    def get_scale(self, r, c, t, rows=ROWS, cols=COLS):
         """
-        Query CPPN at every grid position and return a 2D morphology list.
-        presence_threshold: logit threshold (0.0 = sigmoid 0.5 boundary)
+        Returns spring scale for muscle voxel at (r, c) at time t.
+        Returns 1.0 (rest length) if controller silences this voxel.
         """
-        morphology = []
-        for r in range(rows):
-            row = []
-            for c in range(cols):
-                x = (c / (cols - 1)) * 2 - 1 if cols > 1 else 0.0
-                y = (r / (rows - 1)) * 2 - 1 if rows > 1 else 0.0
+        x = (c / (cols - 1)) * 2 - 1 if cols > 1 else 0.0
+        y = (r / (rows - 1)) * 2 - 1 if rows > 1 else 0.0
 
-                out = self.forward(x, y)
+        active, frequency, phase, amplitude = self.forward(x, y)
 
-                presence_logit = out[0]
-                type_logits    = out[1:]  # [muscle_a, muscle_b, soft, rigid]
+        if not active:
+            return 1.0
 
-                if presence_logit < presence_threshold:
-                    row.append(EMPTY)
-                else:
-                    # argmax over type logits — no saturation bias
-                    best = type_logits.index(max(type_logits))
-                    row.append(VOXEL_TYPES_ACTIVE[best])
-
-            morphology.append(row)
-        return morphology
+        return 1.0 + amplitude * math.sin(frequency * t + phase)
 
     def set_weights(self, weights):
         self.weights = list(weights)

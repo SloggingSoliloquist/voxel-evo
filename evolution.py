@@ -4,42 +4,56 @@ import pygame
 import random
 import json
 import os
-from config import ROWS, COLS, VOXEL_PD
+from config import ROWS, COLS
 from voxel import EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID
-from cppn import CPPN
+from cppn_morphology import CPPN
+from cppn_controller import CPPNController
 from evaluator import evaluate
 
 # --- GA parameters ---
 POPULATION_SIZE   = 20
 GENERATIONS       = 50
 TOURNAMENT_K      = 3
-MUTATION_RATE     = 0.1    # probability of mutating each weight
-MUTATION_STRENGTH = 0.5    # gaussian std for weight perturbation
+MUTATION_RATE     = 0.1
+MUTATION_STRENGTH = 0.5
 ELITISM           = 1
 
-# Genome length comes from the CPPN architecture
-_cppn_ref     = CPPN()
-GENOME_LENGTH = _cppn_ref.genome_length
+# Genome = morphology CPPN weights + controller CPPN weights, concatenated
+_morph_ref  = CPPN()
+_ctrl_ref   = CPPNController()
+MORPH_LEN   = _morph_ref.genome_length
+CTRL_LEN    = _ctrl_ref.genome_length
+GENOME_LENGTH = MORPH_LEN + CTRL_LEN
+
+print(f"Morphology CPPN genome: {MORPH_LEN} weights")
+print(f"Controller CPPN genome: {CTRL_LEN} weights")
+print(f"Total genome length:    {GENOME_LENGTH} weights")
 
 
 # ------------------------------------------------------------------
-# Validity check — decoded morphology must be connected + have actuator
+# Genome slicing helpers
+# ------------------------------------------------------------------
+
+def split_genome(genome):
+    """Split flat genome into (morph_weights, ctrl_weights)."""
+    return genome[:MORPH_LEN], genome[MORPH_LEN:]
+
+
+# ------------------------------------------------------------------
+# Validity check — morphology half must be connected + have actuator
 # ------------------------------------------------------------------
 
 def is_connected(morphology):
     rows = len(morphology)
     cols = len(morphology[0])
-
     active = [
         (r, c)
         for r in range(rows)
         for c in range(cols)
         if morphology[r][c] != EMPTY
     ]
-
     if len(active) == 0:
         return False
-
     visited = set()
     stack = [active[0]]
     while stack:
@@ -52,7 +66,6 @@ def is_connected(morphology):
             if 0 <= nr < rows and 0 <= nc < cols:
                 if morphology[nr][nc] != EMPTY and (nr, nc) not in visited:
                     stack.append((nr, nc))
-
     return len(visited) == len(active)
 
 
@@ -65,7 +78,8 @@ def has_actuator(morphology):
 
 
 def is_valid(genome):
-    morphology = CPPN(genome).decode()
+    morph_w, _ = split_genome(genome)
+    morphology = CPPN(morph_w).decode()
     return is_connected(morphology) and has_actuator(morphology)
 
 
@@ -74,15 +88,16 @@ def is_valid(genome):
 # ------------------------------------------------------------------
 
 def random_genome():
-    """Random CPPN weights, retrying until decoded morphology is valid."""
+    """Random weights for both CPPNs, retrying until morphology is valid."""
     while True:
-        genome = [random.gauss(0, 1.0) for _ in range(GENOME_LENGTH)]
+        genome = [random.gauss(0, 1.0) for _ in range(MORPH_LEN)] + \
+                 [random.gauss(0, 1.0) for _ in range(CTRL_LEN)]
         if is_valid(genome):
             return genome
 
 
 def mutate(genome):
-    """Gaussian perturbation on weights, retrying until valid."""
+    """Gaussian perturbation across entire genome, retrying until valid."""
     while True:
         candidate = [
             w + random.gauss(0, MUTATION_STRENGTH) if random.random() < MUTATION_RATE else w
@@ -93,7 +108,7 @@ def mutate(genome):
 
 
 def crossover(a, b):
-    """Single-point crossover on weight vectors, retrying until valid."""
+    """Single-point crossover across entire genome, retrying until valid."""
     while True:
         point = random.randint(1, GENOME_LENGTH - 1)
         child = a[:point] + b[point:]
@@ -108,13 +123,19 @@ def tournament_select(population, fitnesses, k=TOURNAMENT_K):
 
 
 def log_generation(generation, population, fitnesses, log_dir):
+    best_idx = fitnesses.index(max(fitnesses))
+    best_genome = population[best_idx]
+    morph_w, ctrl_w = split_genome(best_genome)
+    morphology = CPPN(morph_w).decode()
+
     data = {
-        "generation": generation,
-        "best_fitness": max(fitnesses),
-        "mean_fitness": sum(fitnesses) / len(fitnesses),
-        "best_genome": population[fitnesses.index(max(fitnesses))],
-        "best_morphology": CPPN(population[fitnesses.index(max(fitnesses))]).decode(),
-        "all_fitnesses": fitnesses,
+        "generation":     generation,
+        "best_fitness":   max(fitnesses),
+        "mean_fitness":   sum(fitnesses) / len(fitnesses),
+        "best_morph_weights": morph_w,
+        "best_ctrl_weights":  ctrl_w,
+        "best_morphology":    morphology,
+        "all_fitnesses":  fitnesses,
     }
     path = os.path.join(log_dir, f"gen_{generation:04d}.json")
     with open(path, "w") as f:
@@ -133,11 +154,10 @@ def evolve():
     log_dir = user_input if user_input else "evo_logs"
     os.makedirs(log_dir, exist_ok=True)
     print(f"Logging to: {log_dir}/")
-    print(f"CPPN genome length: {GENOME_LENGTH} weights")
 
     pygame.init()
-    screen = pygame.display.set_mode((800, 600))
-    pygame.display.set_caption("CPPN Morphology Evolution")
+    screen = pygame.display.set_mode((900, 600))
+    pygame.display.set_caption("Co-Evolution: Morphology + Controller")
     font = pygame.font.SysFont("monospace", 18)
 
     population = [random_genome() for _ in range(POPULATION_SIZE)]
@@ -148,11 +168,11 @@ def evolve():
         for i, genome in enumerate(population):
             print(f"  Evaluating gen {generation}, individual {i+1}/{POPULATION_SIZE}...")
 
-            # Decode CPPN genome to morphology for the evaluator
-            morphology = CPPN(genome).decode()
+            morph_w, ctrl_w = split_genome(genome)
+            morphology = CPPN(morph_w).decode()
 
             fitness = evaluate(
-                morphology, ROWS, COLS, screen, font,
+                morphology, ctrl_w, ROWS, COLS, screen, font,
                 generation=generation,
                 individual=i + 1,
                 population_size=POPULATION_SIZE,
@@ -166,7 +186,6 @@ def evolve():
         population_sorted = [g for _, g in ranked]
 
         new_population = []
-
         for i in range(ELITISM):
             new_population.append(population_sorted[i])
 

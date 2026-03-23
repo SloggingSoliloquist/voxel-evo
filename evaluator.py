@@ -9,7 +9,7 @@ from config import (
 from world import create_space, init_ground, extend_ground, terrain_end_x
 from world import terrain_points
 from grid import build_grid
-from simple_wave_controller import WaveController
+from cppn_controller import CPPNController
 from voxel import MUSCLE_A, MUSCLE_B
 
 EVAL_DURATION = 10.0
@@ -57,13 +57,14 @@ def draw_robot(screen, voxels, camera_x, camera_y):
             pygame.draw.polygon(screen, (200, 200, 200), pts, 1)
 
 
-def evaluate(morphology, rows, cols, screen, font,
+def evaluate(morphology, ctrl_weights, rows, cols, screen, font,
              generation=0, individual=0, population_size=0):
     """
-    Run one morphology for EVAL_DURATION seconds.
+    Run one morphology + controller pair for EVAL_DURATION seconds.
     Returns fitness (distance travelled in pixels).
 
-    morphology: 2D list of voxel type ints, already decoded from CPPN
+    morphology:   2D list of voxel type ints, decoded from morphology CPPN
+    ctrl_weights: flat list of floats, the controller CPPN genome
     """
     space = create_space(GRAVITY)
     ground_y = int(HEIGHT * GROUND_Y_FRAC)
@@ -73,7 +74,7 @@ def evaluate(morphology, rows, cols, screen, font,
     spawn_y = ground_y - robot_height - 5
 
     voxels = build_grid(space, start_x=200, start_y=spawn_y, morphology=morphology)
-    controller = WaveController(rows, cols, amplitude=0.6, frequency=3, phase_offset=0.5)
+    controller = CPPNController(ctrl_weights)
 
     clock = pygame.time.Clock()
     t = 0.0
@@ -96,13 +97,14 @@ def evaluate(morphology, rows, cols, screen, font,
         if start_x is None:
             start_x = get_robot_x(voxels)
 
+        # Apply controller CPPN to each muscle voxel
         for r, row in enumerate(voxels):
             for c, voxel in enumerate(row):
                 if voxel is None:
                     continue
                 if voxel.voxel_type not in (MUSCLE_A, MUSCLE_B):
                     continue
-                scale = controller.get_scale(r, c, t, voxel_type=voxel.voxel_type)
+                scale = controller.get_scale(r, c, t, rows=rows, cols=cols)
                 voxel.apply_scale(scale)
 
         for _ in range(SUBSTEPS):
