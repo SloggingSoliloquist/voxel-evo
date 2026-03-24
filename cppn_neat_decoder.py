@@ -18,7 +18,7 @@ from config import ROWS, COLS
 from voxel import EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID
 
 VOXEL_TYPES_ACTIVE = [MUSCLE_A, MUSCLE_B, SOFT, RIGID]
-PRESENCE_THRESHOLD    = 0.0   # presence_logit threshold
+PRESENCE_THRESHOLD    = 1.0   # presence_logit threshold
 MUSCLE_PROB_THRESHOLD = 0.5   # below this the voxel is silent
 
 def build_network(genome, config):
@@ -86,7 +86,8 @@ def get_scale(net, r, c, t, rows=ROWS, cols=COLS):
     if muscle_prob < MUSCLE_PROB_THRESHOLD:
         return 1.0
 
-    frequency = 0.5 + _sigmoid(out[5]) * 5.5
+    frequency = 3.0 + math.tanh(out[5]) * 5.0   # [-2.0, 8.0] Hz, centered at 3.0
+    frequency = max(0.5, frequency)              # clamp minimum
     phase     = math.tanh(out[6]) * math.pi
     amplitude = 0.2 + _sigmoid(out[7]) * 0.6
 

@@ -12,7 +12,7 @@ from evaluator_neat import evaluate_neat
 # --- Parameters ---
 GENERATIONS  = 200
 CONFIG_PATH  = "neat_config.cfg"
-HEADLESS     = False   # set True for fast runs, False to watch
+HEADLESS     = True   # set True for fast runs, False to watch
 
 
 def make_fitness_fn(rows, cols, screen, font, generation_counter):
@@ -67,6 +67,17 @@ def log_generation(population, log_dir, generation):
     with open(pkl_path, "wb") as f:
         pickle.dump(best, f)
 
+
+    species_dir = os.path.join(log_dir, f"gen_{generation:04d}_species")
+    os.makedirs(species_dir, exist_ok=True)
+
+    for sid, species in population.species.species.items():
+        best_in_species = max(species.members.values(), 
+                            key=lambda g: g.fitness or 0)
+        spath = os.path.join(species_dir, f"species_{sid}.pkl")
+        with open(spath, "wb") as f:
+            pickle.dump(best_in_species, f)
+
     print(f"[Gen {generation:>3}] "
           f"best={best.fitness:.1f}px | "
           f"species={len(population.species.species)} | "
@@ -84,10 +95,21 @@ class GenerationReporter(neat.reporting.BaseReporter):
 
     def start_generation(self, generation):
         self.generation = generation
-
+    
     def end_generation(self, config, population, species_set):
         log_generation(self.population, self.log_dir, self.generation)
 
+        target_species = 10
+        current_species = len(species_set.species)
+
+        if current_species < target_species - 2:
+            config.species_set_config.compatibility_threshold *= 0.95
+        elif current_species > target_species + 2:
+            config.species_set_config.compatibility_threshold *= 1.05
+
+        config.species_set_config.compatibility_threshold = max(1.0, min(10.0, config.species_set_config.compatibility_threshold))
+
+        print(f"  Species: {current_species} | Threshold: {config.species_set_config.compatibility_threshold:.2f}")
 
 def evolve():
     user_input = input("Log directory [neat_logs]: ").strip()

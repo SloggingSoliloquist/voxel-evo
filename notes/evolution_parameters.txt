@@ -1,0 +1,6 @@
+If the number of species is too small: Too much competition, lack of         
+diversity as winners disproportionately dominate.
+
+If the number of species is too large; Too little species, no competition
+at all. No actual change ends up happening between generations. 
+
