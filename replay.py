@@ -72,18 +72,15 @@ def replay(log_path):
     fitness    = data["best_fitness"]
 
     print(f"Replaying gen {gen} | fitness {fitness:.4f}")
-    print(f"Re-training PPO on best morphology for replay...")
+    policy_path = data.get("policy_path")
+    if not policy_path:
+        print("No policy path in log file. Run evolution again to generate saved weights.")
+        sys.exit(1)
 
-    # Re-train PPO from scratch on this morphology for replay
-    _, _ = train_ppo(morphology)
-
-    # Train again to get the policy object back
-    # (train_ppo doesn't return the policy — rebuild it properly)
-    env    = VoxelEnv(morphology)
     policy = ActorCritic(OBS_SIZE, ACTION_SIZE)
-    from ppo import train_ppo_with_policy
-    policy, best_reward = train_ppo_with_policy(morphology, policy)
-    print(f"Re-trained. Best reward: {best_reward:.4f}")
+    policy.load_state_dict(torch.load(policy_path))
+    policy.eval()
+    print(f"Loaded policy from {policy_path}")
 
     # --- Build visual sim ---
     pygame.init()
