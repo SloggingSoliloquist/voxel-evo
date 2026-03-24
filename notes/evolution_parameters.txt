@@ -4,3 +4,22 @@ diversity as winners disproportionately dominate.
 If the number of species is too large; Too little species, no competition
 at all. No actual change ends up happening between generations. 
 
+important parameters: 
+Stagnation is related to species, to evaluate whether a species needs to be
+eliminated i.e go extinct or not. 
+Max Stagnation is essentially the number of generations of no improvement
+that it takes for a species to be considered stagnant and hence removed. 
+
+Species elitism is essentially the nymber of species that are protected
+from stagnations. This is essentually to prevent mass extinction before new
+species can arirse. Eg. a species elitism of 3 will prevent the 3 highest
+fitness species from being removed regardless of whetheer they 
+have corssed ths tagnation threshold or not. 
+
+The Default Reproduction Section is essentially settings that aren't specific
+to species. All the above was required only cos you want to have different
+species in your population. 
+
+Go through EvoGtym's implementatino of CPPN Neat and see what's different. 
+I have a feeling that a lot of parreters have been skipped. here. 
+

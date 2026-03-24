@@ -96,7 +96,7 @@ class GenerationReporter(neat.reporting.BaseReporter):
     def start_generation(self, generation):
         self.generation = generation
     
-    def end_generation(self, config, population, species_set):
+    def end_generation(self, config, population, species_set): #Why are we doing this when we can st a target ourselves? 
         log_generation(self.population, self.log_dir, self.generation)
 
         target_species = 10

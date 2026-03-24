@@ -1,11 +1,13 @@
 # evolution.py
 
+import pygame
 import random
 import json
 import os
 from config import ROWS, COLS
 from voxel import EMPTY, MUSCLE_A, MUSCLE_B, SOFT, RIGID
 from cppn_morphology import CPPN
+from cppn_controller import CPPNController
 from evaluator import evaluate
 
 # --- GA parameters ---
@@ -16,14 +18,29 @@ MUTATION_RATE     = 0.1
 MUTATION_STRENGTH = 0.5
 ELITISM           = 1
 
-_morph_ref    = CPPN()
-GENOME_LENGTH = _morph_ref.genome_length
+# Genome = morphology CPPN weights + controller CPPN weights, concatenated
+_morph_ref  = CPPN()
+_ctrl_ref   = CPPNController()
+MORPH_LEN   = _morph_ref.genome_length
+CTRL_LEN    = _ctrl_ref.genome_length
+GENOME_LENGTH = MORPH_LEN + CTRL_LEN
 
-print(f"Morphology CPPN genome: {GENOME_LENGTH} weights")
+print(f"Morphology CPPN genome: {MORPH_LEN} weights")
+print(f"Controller CPPN genome: {CTRL_LEN} weights")
+print(f"Total genome length:    {GENOME_LENGTH} weights")
 
 
 # ------------------------------------------------------------------
-# Validity checks
+# Genome slicing helpers
+# ------------------------------------------------------------------
+
+def split_genome(genome):
+    """Split flat genome into (morph_weights, ctrl_weights)."""
+    return genome[:MORPH_LEN], genome[MORPH_LEN:]
+
+
+# ------------------------------------------------------------------
+# Validity check — morphology half must be connected + have actuator
 # ------------------------------------------------------------------
 
 def is_connected(morphology):
@@ -61,7 +78,8 @@ def has_actuator(morphology):
 
 
 def is_valid(genome):
-    morphology = CPPN(genome).decode()
+    morph_w, _ = split_genome(genome)
+    morphology = CPPN(morph_w).decode()
     return is_connected(morphology) and has_actuator(morphology)
 
 
@@ -70,13 +88,16 @@ def is_valid(genome):
 # ------------------------------------------------------------------
 
 def random_genome():
+    """Random weights for both CPPNs, retrying until morphology is valid."""
     while True:
-        genome = [random.gauss(0, 1.0) for _ in range(GENOME_LENGTH)]
+        genome = [random.gauss(0, 1.0) for _ in range(MORPH_LEN)] + \
+                 [random.gauss(0, 1.0) for _ in range(CTRL_LEN)]
         if is_valid(genome):
             return genome
 
 
 def mutate(genome):
+    """Gaussian perturbation across entire genome, retrying until valid."""
     while True:
         candidate = [
             w + random.gauss(0, MUTATION_STRENGTH) if random.random() < MUTATION_RATE else w
@@ -87,6 +108,7 @@ def mutate(genome):
 
 
 def crossover(a, b):
+    """Single-point crossover across entire genome, retrying until valid."""
     while True:
         point = random.randint(1, GENOME_LENGTH - 1)
         child = a[:point] + b[point:]
@@ -101,23 +123,25 @@ def tournament_select(population, fitnesses, k=TOURNAMENT_K):
 
 
 def log_generation(generation, population, fitnesses, log_dir):
-    best_idx    = fitnesses.index(max(fitnesses))
+    best_idx = fitnesses.index(max(fitnesses))
     best_genome = population[best_idx]
-    morphology  = CPPN(best_genome).decode()
+    morph_w, ctrl_w = split_genome(best_genome)
+    morphology = CPPN(morph_w).decode()
 
     data = {
-        "generation":      generation,
-        "best_fitness":    max(fitnesses),
-        "mean_fitness":    sum(fitnesses) / len(fitnesses),
-        "best_genome":     best_genome,
-        "best_morphology": morphology,
-        "all_fitnesses":   fitnesses,
+        "generation":     generation,
+        "best_fitness":   max(fitnesses),
+        "mean_fitness":   sum(fitnesses) / len(fitnesses),
+        "best_morph_weights": morph_w,
+        "best_ctrl_weights":  ctrl_w,
+        "best_morphology":    morphology,
+        "all_fitnesses":  fitnesses,
     }
     path = os.path.join(log_dir, f"gen_{generation:04d}.json")
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
-    print(f"[Gen {generation:>3}] best={data['best_fitness']:.4f}  "
-          f"mean={data['mean_fitness']:.4f}  "
+    print(f"[Gen {generation:>3}] best={data['best_fitness']:.1f}px  "
+          f"mean={data['mean_fitness']:.1f}px  "
           f"logged → {path}")
 
 
@@ -130,23 +154,31 @@ def evolve():
     log_dir = user_input if user_input else "evo_logs"
     os.makedirs(log_dir, exist_ok=True)
     print(f"Logging to: {log_dir}/")
-    print(f"Running headless — no display required.")
+
+    pygame.init()
+    screen = pygame.display.set_mode((900, 600))
+    pygame.display.set_caption("Co-Evolution: Morphology + Controller")
+    font = pygame.font.SysFont("monospace", 18)
 
     population = [random_genome() for _ in range(POPULATION_SIZE)]
 
     for generation in range(1, GENERATIONS + 1):
-        print(f"\n--- Generation {generation}/{GENERATIONS} ---")
         fitnesses = []
 
         for i, genome in enumerate(population):
-            morphology = CPPN(genome).decode()
+            print(f"  Evaluating gen {generation}, individual {i+1}/{POPULATION_SIZE}...")
+
+            morph_w, ctrl_w = split_genome(genome)
+            morphology = CPPN(morph_w).decode()
+
             fitness = evaluate(
-                morphology, ROWS, COLS,
+                morphology, ctrl_w, ROWS, COLS, screen, font,
                 generation=generation,
                 individual=i + 1,
                 population_size=POPULATION_SIZE,
             )
             fitnesses.append(fitness)
+            print(f"    → fitness: {fitness:.1f} px")
 
         log_generation(generation, population, fitnesses, log_dir)
 
@@ -167,6 +199,7 @@ def evolve():
         population = new_population
 
     print("\nEvolution complete.")
+    pygame.quit()
 
 
 if __name__ == "__main__":
