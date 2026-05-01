@@ -1,6 +1,4 @@
 # voxel-evo
-Messing around with genetic algorithms for the evolution of voxel-based soft robots
-
 Autonomous design of morphology and control parameters of voxel-based soft robots through the use of evolutionary algorithms. 
 
 <img width="400" height="184" alt="robot" src="https://github.com/user-attachments/assets/c4171251-d5b9-4ed1-bb32-8822a11ca9a2" />
